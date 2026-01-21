@@ -1,4 +1,4 @@
-﻿export function json(res, status, data) {
+export function json(res, status, data) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(data));
@@ -38,6 +38,13 @@ export function pickSubscriptionEmail(payload) {
     payload?.billing_email ||
     ""
   ).toString().trim().toLowerCase();
+}
+
+export function pickSubscriptionName(payload) {
+  const first = (payload?.billing?.first_name || payload?.customer?.first_name || "").toString().trim();
+  const last = (payload?.billing?.last_name || payload?.customer?.last_name || "").toString().trim();
+  if (first || last) return `${first} ${last}`.trim();
+  return null;
 }
 
 export function safeNum(v) {

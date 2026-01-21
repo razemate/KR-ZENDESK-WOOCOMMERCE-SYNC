@@ -1,0 +1,13 @@
+{
+  "status.syncing": "Woo data is syncing…",
+  "status.not_found": "No Woo Subscription data",
+  "status.no_changes": "No changes found",
+  "status.error": "Error loading Woo data",
+  "action.refresh": "Refresh",
+  "app": {
+    "name": "Woo Subscription Viewer",
+    "short_description": "View Woo subscription + latest order details inside Zendesk.",
+    "long_description": "Shows pre-synced WooCommerce subscription + latest order data for the ticket requester. Read-only. Includes refresh and syncing states.",
+    "installation_instructions": "Install the app, set api_endpoint (your backend base URL), then open any ticket."
+  }
+}

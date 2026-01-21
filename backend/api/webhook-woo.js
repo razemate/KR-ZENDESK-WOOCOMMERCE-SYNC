@@ -1,6 +1,6 @@
-﻿import crypto from "crypto";
+import crypto from "crypto";
 import { getSupabaseAdmin } from "../lib/supabase.js";
-import { json, pickSubscriptionEmail, safeNum } from "../lib/utils.js";
+import { json, pickSubscriptionEmail, pickSubscriptionName, safeNum } from "../lib/utils.js";
 
 function verifyWooSignatureBestEffort(req, bodyObj) {
   const secret = process.env.WOO_WEBHOOK_SECRET;
@@ -25,30 +25,45 @@ export default async function handler(req, res) {
     if (!email || !email.includes("@")) return json(res, 400, { ok: false, error: "Webhook payload missing billing email" });
 
     const sigCheck = verifyWooSignatureBestEffort(req, payload);
-
-    const subscriptionId = safeNum(payload?.id);
-    const status = (payload?.status || "").toString() || null;
-    const startDate = (payload?.start_date_gmt || payload?.start_date || "").toString() || null;
-    const nextPayment = (payload?.next_payment_date_gmt || payload?.next_payment_date || "").toString() || null;
-    const paymentMethod = (payload?.payment_method_title || payload?.payment_method || "").toString() || null;
-    const total = safeNum(payload?.total);
-
-    const adminUrl = subscriptionId ? `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${subscriptionId}&action=edit` : null;
+    const topic = (req.headers["x-wc-webhook-topic"] || req.headers["X-WC-Webhook-Topic"] || "").toString().toLowerCase();
 
     const supabase = getSupabaseAdmin();
-
-    const upsertRow = {
+    
+    // Base object - will be merged with existing data by Supabase upsert
+    let upsertRow = {
       email,
-      subscription_id: subscriptionId,
-      subscription_admin_url: adminUrl,
-      subscription_status: status,
-      start_date_iso: startDate,
-      next_payment_iso: nextPayment,
-      payment_method: paymentMethod,
-      order_total: total,
       sync_status: "ready",
       last_synced_at: new Date().toISOString()
     };
+
+    if (topic.includes("subscription")) {
+        const subscriptionId = safeNum(payload?.id);
+        const adminUrl = subscriptionId ? `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${subscriptionId}&action=edit` : null;
+        const name = pickSubscriptionName(payload);
+
+        upsertRow.subscription_id = subscriptionId;
+        upsertRow.subscription_admin_url = adminUrl;
+        upsertRow.subscription_status = (payload?.status || "").toString() || null;
+        upsertRow.start_date_iso = (payload?.start_date_gmt || payload?.start_date || "").toString() || null;
+        upsertRow.next_payment_iso = (payload?.next_payment_date_gmt || payload?.next_payment_date || "").toString() || null;
+        upsertRow.payment_method = (payload?.payment_method_title || payload?.payment_method || "").toString() || null;
+        upsertRow.order_total = safeNum(payload?.total);
+        if (name) upsertRow.full_name = name;
+        
+    } else if (topic.includes("order")) {
+        const orderId = safeNum(payload?.id);
+        const adminUrl = orderId ? `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${orderId}&action=edit` : null;
+        const name = pickSubscriptionName(payload);
+
+        upsertRow.latest_order_id = orderId;
+        upsertRow.latest_order_admin_url = adminUrl;
+        upsertRow.latest_order_status = (payload?.status || "").toString() || null;
+        upsertRow.latest_order_date_iso = (payload?.date_created_gmt || payload?.date_created || "").toString() || null;
+        if (name) upsertRow.full_name = name;
+    } else {
+        // Unknown or irrelevant topic
+        return json(res, 200, { ok: true, ignored: true, topic });
+    }
 
     const { error } = await supabase
       .from("woo_subscription_snapshot")
@@ -56,7 +71,7 @@ export default async function handler(req, res) {
 
     if (error) return json(res, 500, { ok: false, error: "Supabase upsert failed", details: error.message });
 
-    return json(res, 200, { ok: true, email, signature: sigCheck });
+    return json(res, 200, { ok: true, email, signature: sigCheck, topic });
   } catch (e) {
     return json(res, e.statusCode || 500, { ok: false, error: e.message || "Server error" });
   }

@@ -1,0 +1,13 @@
+body { font-family: Arial, sans-serif; font-size: 13px; padding: 10px; margin: 0; max-width: 520px; width: 100%; box-sizing: border-box; }
+*, *:before, *:after { box-sizing: inherit; }
+#app { width: 100%; }
+.section-title { font-weight: 600; margin: 6px 0 8px; }
+.row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; }
+.k { min-width: 120px; color: #555; }
+.v { text-align: right; word-break: break-word; }
+hr { border: none; border-top: 1px solid #e6e6e6; margin: 10px 0; }
+.overdue { color: #c00000; font-weight: 700; }
+#content { margin-bottom: 10px; }
+#refresh { width: 100%; }
+a { text-decoration: none; }
+a:hover { text-decoration: underline; }
