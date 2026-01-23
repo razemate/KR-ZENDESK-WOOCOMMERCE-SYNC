@@ -1,25 +1,25 @@
-body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif; font-size: 10px; padding: 0 10px 10px 10px; margin: 0; max-width: 520px; width: 100%; box-sizing: border-box; line-height: 1.2; }
+body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif; font-size: 10px !important; padding: 0 8px 8px 8px !important; margin: 0 !important; max-width: 520px; width: 100%; box-sizing: border-box; line-height: 1.2 !important; }
 *, *:before, *:after { box-sizing: inherit; }
-#app { width: 100%; margin-top: 4px; }
-.section-title { font-weight: 600; margin: 6px 0 8px; }
-.row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
-.k { min-width: 120px; color: #555; }
-.v { text-align: right; word-break: break-word; }
-hr { border: none; border-top: 1px solid #e6e6e6; margin: 6px 0; }
+#app { width: 100%; margin-top: 0 !important; padding: 0 !important; }
+.section-title { font-weight: 600; margin: 6px 0 8px; font-size: 10px !important; }
+.row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0 !important; font-size: 10px !important; }
+.k { min-width: 120px; color: #555; font-size: 10px !important; }
+.v { text-align: right; word-break: break-word; font-size: 10px !important; }
+hr { border: none; border-top: 1px solid #e6e6e6; margin: 4px 0 !important; }
 .overdue { color: #c00000; font-weight: 700; }
-#content { margin-bottom: 10px; }
-#refresh { width: 100%; }
-a { text-decoration: none; }
+#content { margin-bottom: 8px; }
+#refresh { width: 100%; font-size: 10px !important; padding: 4px 8px; }
+a { text-decoration: none; font-size: 10px !important; }
 a:hover { text-decoration: underline; }
 
 .copy-icon {
   cursor: pointer;
-  margin-left: 8px;
+  margin-left: 6px;
   vertical-align: middle;
   color: #777;
   display: inline-flex;
   align-items: center;
-  padding: 2px;
+  padding: 1px;
   border-radius: 4px;
 }
 .copy-icon:hover {
@@ -27,6 +27,6 @@ a:hover { text-decoration: underline; }
   background-color: #f0f0f0;
 }
 .copy-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
