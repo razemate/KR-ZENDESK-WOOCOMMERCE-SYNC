@@ -22,7 +22,8 @@ function copyToClipboard(text) {
 window.copyToClipboard = copyToClipboard;
 
 function renderBox(title, bodyHtml) {
-  render('<div class="box"><div class="row"><strong>' + esc(title) + '</strong></div>' + bodyHtml + '</div>');
+  const header = title ? '<div class="row"><strong>' + esc(title) + '</strong></div>' : '';
+  render('<div class="box">' + header + bodyHtml + '</div>');
 }
 
 function renderError(title, detailsObj) {
@@ -48,10 +49,14 @@ function formatDate(isoStr) {
   return d.toLocaleDateString('en-US', options);
 }
 
-function renderRecord(record) {
-  const subUrl = record.subscription_admin_url ? '<div class="row"><a href="' + esc(record.subscription_admin_url) + '" target="_blank">View Subscription in Woo</a></div>' : '';
-  const orderUrl = record.latest_order_admin_url ? '<div class="row"><a href="' + esc(record.latest_order_admin_url) + '" target="_blank">View Latest Order in Woo</a></div>' : '';
+function toTitleCase(str) {
+  if (!str || str === "-") return "-";
+  return str.replace(/\w\S*/g, function(txt){
+    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+  });
+}
 
+function renderRecord(record) {
   const nextPaymentVal = record.next_payment_iso || "-";
   let nextPaymentClass = "";
   if (nextPaymentVal !== "-") {
@@ -62,23 +67,36 @@ function renderRecord(record) {
   }
 
   const orderTotal = record.order_total ? "$" + record.order_total : "-";
+  const status = toTitleCase(record.subscription_status);
+  const orderStatus = toTitleCase(record.latest_order_status);
+  
+  // Email Link
+  let emailHtml = esc(record.email || "-");
+  if (record.subscription_admin_url && record.email) {
+    emailHtml = '<a href="' + esc(record.subscription_admin_url) + '" target="_blank" style="color: #1f73b7;">' + esc(record.email) + '</a>';
+  }
 
-  renderBox("KR Zendesk Woo Sync",
+  // Order ID Link
+  const orderId = (record.latest_order_id ?? "-").toString();
+  let orderIdHtml = esc(orderId);
+  if (record.latest_order_admin_url && orderId !== "-") {
+    orderIdHtml = '<a href="' + esc(record.latest_order_admin_url) + '" target="_blank" style="color: #1f73b7;">' + esc(orderId) + '</a>';
+  }
+
+  renderBox("",
     '<div class="row"><strong>Name:</strong> ' + esc(record.full_name || "-") + '</div>' +
-    '<div class="row"><strong>Email:</strong> ' + esc(record.email || "-") + 
-    ' <span class="copy-icon" title="Copy Email" onclick="copyToClipboard(\'' + esc(record.email || "") + '\')">📋</span></div>' +
-    '<div class="row"><strong>Status:</strong> ' + esc(record.subscription_status || "-") + '</div>' +
+    '<div class="row"><strong>Email:</strong> ' + emailHtml + 
+    ' <span class="copy-icon" title="Copy Email" onclick="copyToClipboard(\'' + esc(record.email || "") + '\')"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></div>' +
+    '<div class="row"><strong>Status:</strong> ' + esc(status) + '</div>' +
     '<div class="row"><strong>Start:</strong> ' + esc(formatDate(record.start_date_iso)) + '</div>' +
     '<div class="row"><strong>Next Payment:</strong> <span class="' + nextPaymentClass + '">' + esc(formatDate(nextPaymentVal)) + '</span></div>' +
     '<div class="row"><strong>Payment Method:</strong> ' + esc(record.payment_method || "-") + '</div>' +
     '<div class="row"><strong>Order Total:</strong> ' + esc(orderTotal) + '</div>' +
-    subUrl +
     '<hr />' +
     '<div class="row"><strong>Latest Order</strong></div>' +
-    '<div class="row"><strong>Order #:</strong> ' + esc((record.latest_order_id ?? "-").toString()) + '</div>' +
-    '<div class="row"><strong>Order Status:</strong> ' + esc(record.latest_order_status || "-") + '</div>' +
+    '<div class="row"><strong>Order #:</strong> ' + orderIdHtml + '</div>' +
+    '<div class="row"><strong>Order Status:</strong> ' + esc(orderStatus) + '</div>' +
     '<div class="row"><strong>Order Date:</strong> ' + esc(formatDate(record.latest_order_date_iso)) + '</div>' +
-    orderUrl +
     '<div class="row"><button id="refreshBtn">Refresh</button></div>'
   );
 

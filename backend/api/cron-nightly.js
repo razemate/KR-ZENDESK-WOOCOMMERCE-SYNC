@@ -12,6 +12,9 @@ function getLatestOrderIdFromSub(sub) {
         if (Array.isArray(sub.related_orders.renewal)) {
             candidates.push(...sub.related_orders.renewal);
         }
+        if (Array.isArray(sub.related_orders.switch)) {
+            candidates.push(...sub.related_orders.switch);
+        }
         if (sub.related_orders.parent) {
             candidates.push(sub.related_orders.parent);
         }
