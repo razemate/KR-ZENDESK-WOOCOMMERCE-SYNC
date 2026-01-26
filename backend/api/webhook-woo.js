@@ -1,7 +1,9 @@
 import crypto from "crypto";
 import { getSupabaseAdmin } from "../lib/supabase.js";
+import { wooGet } from "../lib/woo.js";
 import { json, pickSubscriptionEmail, pickSubscriptionName, safeNum } from "../lib/utils.js";
 
+// Helper to calculate HMAC signature
 function verifyWooSignatureBestEffort(req, bodyObj) {
   const secret = process.env.WOO_WEBHOOK_SECRET;
   if (!secret) return { verified: false, reason: "Missing env var: WOO_WEBHOOK_SECRET" };
@@ -36,6 +38,9 @@ export default async function handler(req, res) {
       last_synced_at: new Date().toISOString()
     };
 
+    // =================================================================
+    // 1. HANDLE SUBSCRIPTION UPDATES
+    // =================================================================
     if (topic.includes("subscription")) {
         const subscriptionId = safeNum(payload?.id);
         const adminUrl = subscriptionId ? `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${subscriptionId}&action=edit` : null;
@@ -50,16 +55,59 @@ export default async function handler(req, res) {
         upsertRow.order_total = safeNum(payload?.total);
         if (name) upsertRow.full_name = name;
         
+        // CRITICAL FIX: Also update the "Latest Order" info
+        // We now fetch the latest order for the customer, not just the one related to the subscription
+        if (payload.customer_id) {
+            try {
+                 const customerOrders = await wooGet(`/wp-json/wc/v3/orders?customer=${payload.customer_id}&per_page=1`);
+                 if (Array.isArray(customerOrders) && customerOrders.length > 0) {
+                     const latestOrder = customerOrders[0];
+                     upsertRow.latest_order_id = latestOrder.id;
+                     upsertRow.latest_order_admin_url = `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${latestOrder.id}&action=edit`;
+                     upsertRow.latest_order_status = (latestOrder.status || "").toString() || null;
+                     upsertRow.latest_order_date_iso = (latestOrder.date_created_gmt || latestOrder.date_created || "").toString() || null;
+                 }
+            } catch (err) {
+                console.error(`Failed to fetch latest order for customer ${payload.customer_id}:`, err.message);
+            }
+        }
+
+    // =================================================================
+    // 2. HANDLE ORDER UPDATES
+    // =================================================================
     } else if (topic.includes("order")) {
         const orderId = safeNum(payload?.id);
         const adminUrl = orderId ? `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${orderId}&action=edit` : null;
         const name = pickSubscriptionName(payload);
 
-        upsertRow.latest_order_id = orderId;
-        upsertRow.latest_order_admin_url = adminUrl;
-        upsertRow.latest_order_status = (payload?.status || "").toString() || null;
-        upsertRow.latest_order_date_iso = (payload?.date_created_gmt || payload?.date_created || "").toString() || null;
-        if (name) upsertRow.full_name = name;
+        // Fetch existing row to avoid overwriting a NEWER order with an OLDER one
+        const { data: existing } = await supabase
+            .from("woo_subscription_snapshot")
+            .select("latest_order_id, latest_order_date_iso")
+            .eq("email", email)
+            .maybeSingle();
+
+        const newOrderDate = new Date(payload?.date_created_gmt || payload?.date_created || 0);
+        const oldOrderDate = new Date(existing?.latest_order_date_iso || 0);
+
+        // Only update if:
+        // 1. We have no existing order
+        // 2. This order is newer than the existing one
+        // 3. This order IS the existing one (updating status of the current latest)
+        const isNewer = newOrderDate > oldOrderDate;
+        const isSame = existing?.latest_order_id == orderId;
+
+        if (!existing || isNewer || isSame) {
+            upsertRow.latest_order_id = orderId;
+            upsertRow.latest_order_admin_url = adminUrl;
+            upsertRow.latest_order_status = (payload?.status || "").toString() || null;
+            upsertRow.latest_order_date_iso = (payload?.date_created_gmt || payload?.date_created || "").toString() || null;
+            if (name) upsertRow.full_name = name;
+        } else {
+            // It's an old order update. Ignore it to preserve the "Latest Order" field.
+            return json(res, 200, { ok: true, ignored: true, reason: "Order is older than current latest" });
+        }
+
     } else {
         // Unknown or irrelevant topic
         return json(res, 200, { ok: true, ignored: true, topic });

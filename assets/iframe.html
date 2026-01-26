@@ -3,12 +3,47 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>KR Zendesk Woo Sync</title>
-    <link href="styles.css?v=14" rel="stylesheet">
+    <title>KR Zendesk Tools</title>
+    <link href="app-styles.css" rel="stylesheet">
   </head>
   <body>
-    <div id="app">Loading…</div>
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="woo">Woo Info</button>
+      <button class="tab-btn" data-tab="ai">AI Helper</button>
+    </div>
+
+    <!-- Tab Content: Woo Sync -->
+    <div id="tab-woo" class="tab-content active">
+      <div id="app">Loading…</div>
+    </div>
+
+    <!-- Tab Content: AI Assistant -->
+    <div id="tab-ai" class="tab-content">
+      <div class="box">
+        <div class="row"><strong>AI Email Assistant</strong></div>
+        <div class="row muted">Generate drafts based on ticket history.</div>
+        <hr />
+        
+        <div class="row">
+            <button id="btn-read-ticket" class="btn-primary">Read Ticket & Draft Reply</button>
+        </div>
+        
+        <div id="ai-loading" style="display:none; text-align:center; padding: 10px;">
+            Thinking...
+        </div>
+
+        <div id="ai-result-container" style="display:none;">
+            <div class="section-title">Draft Reply:</div>
+            <textarea id="ai-output" rows="10" style="width:100%; font-size:12px; padding:4px;"></textarea>
+            <div class="row" style="margin-top:8px;">
+                <button id="btn-insert-reply" class="btn-success">Insert into Ticket</button>
+            </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://static.zdassets.com/zendesk_app_framework_sdk/2.0/zaf_sdk.min.js"></script>
-    <script src="main.js?v=14"></script>
+    <script src="main.js?v=17"></script>
   </body>
 </html>

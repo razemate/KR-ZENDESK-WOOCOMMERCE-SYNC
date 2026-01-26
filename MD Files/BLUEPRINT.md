@@ -1,4 +1,4 @@
-﻿# BLUEPRINT — Zendesk ⇄ Woo Subscriptions Viewer (Pre-Synced, Read-Only)
+# BLUEPRINT — Zendesk ⇄ Woo Subscriptions Viewer (Pre-Synced, Read-Only)
 
 ## 0) Goal (What we are building)
 A Zendesk **Private App (ZIP upload)** that shows WooCommerce Subscription + Latest Order data for the ticket requester **instantly** in the ticket sidebar when an agent clicks the app icon.
@@ -30,9 +30,11 @@ Key behaviors:
 - Order Total (from latest renewal order)
 
 ### Woo Orders Data (LATEST ORDER ONLY)
-- Order # (clickable Woo admin link)
+- Order # (clickable Woo admin link) - *Reflects the most recent order for the customer account, regardless of subscription relation.*
 - Order Status
 - Order Date
+
+*Note: Email and Order links now use dynamic search URLs to ensure correct admin page navigation.*
 
 If a field does not exist in Woo, it is stored as NULL and rendered as “—” in the UI.
 No placeholders are ever written to SQL.

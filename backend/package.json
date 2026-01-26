@@ -8,6 +8,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^7.0.12"
+    "nodemailer": "^7.0.12",
+    "openai": "^6.16.0"
   }
 }

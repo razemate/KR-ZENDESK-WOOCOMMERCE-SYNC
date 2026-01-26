@@ -2,35 +2,7 @@ import { getSupabaseAdmin } from "../lib/supabase.js";
 import { wooGet } from "../lib/woo.js";
 import { json, requireAdminSecret, pickSubscriptionEmail, pickSubscriptionName, safeNum } from "../lib/utils.js";
 
-// Extracts the latest order ID from the subscription object (related_orders)
-function getLatestOrderIdFromSub(sub) {
-    let candidates = [];
-    
-    // 1. Try related_orders structure
-    if (sub?.related_orders) {
-        if (Array.isArray(sub.related_orders.renewal)) {
-            candidates.push(...sub.related_orders.renewal);
-        }
-        if (Array.isArray(sub.related_orders.switch)) {
-            candidates.push(...sub.related_orders.switch);
-        }
-        if (sub.related_orders.parent) {
-            candidates.push(sub.related_orders.parent);
-        }
-    }
-    
-    // 2. Try direct parent_id
-    if (sub?.parent_id) {
-        candidates.push(sub.parent_id);
-    }
-    
-    // Filter valid numbers and sort descending (newest ID first)
-    candidates = candidates.map(safeNum).filter(n => n !== null).sort((a, b) => b - a);
-    
-    return candidates.length > 0 ? candidates[0] : null;
-}
-
-function mapSubscriptionToRow(sub, orderMap = new Map()) {
+function mapSubscriptionToRow(sub, latestOrder) {
   const email = pickSubscriptionEmail(sub);
   const subscriptionId = safeNum(sub?.id);
   const adminUrl = subscriptionId
@@ -38,21 +10,16 @@ function mapSubscriptionToRow(sub, orderMap = new Map()) {
     : null;
   const name = pickSubscriptionName(sub);
 
-  // Find linked latest order data
-  const latestOrderId = getLatestOrderIdFromSub(sub);
-  const latestOrder = latestOrderId ? orderMap.get(latestOrderId) : null;
-  
   let latestOrderAdminUrl = null;
   let latestOrderStatus = null;
   let latestOrderDateIso = null;
+  let latestOrderId = null;
   
-  if (latestOrder) {
+  if (latestOrder && latestOrder.id) {
+      latestOrderId = latestOrder.id;
       latestOrderAdminUrl = `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${latestOrder.id}&action=edit`;
       latestOrderStatus = (latestOrder.status || "").toString() || null;
       latestOrderDateIso = (latestOrder.date_created_gmt || latestOrder.date_created || "").toString() || null;
-  } else if (latestOrderId) {
-      // We have an ID but failed to fetch the order object (maybe trashed or API missed it)
-      latestOrderAdminUrl = `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${latestOrderId}&action=edit`;
   }
   
   // Fallback: If we still have no date, use the subscription's last payment date or start date
@@ -108,7 +75,8 @@ export default async function handler(req, res) {
     const startPage = parseInt(url.searchParams.get("page") || "1");
 
     const supabase = getSupabaseAdmin();
-    const perPage = 50; 
+    // Reduced batch size to accommodate individual order lookups without timeout
+    const perPage = 10; 
     let page = startPage;
     let totalUpserted = 0;
     
@@ -117,40 +85,31 @@ export default async function handler(req, res) {
       const subs = await wooGet(`/wp-json/wc/v3/subscriptions?per_page=${perPage}&page=${page}`);
       if (!Array.isArray(subs) || subs.length === 0) break;
 
-      // 2. Collect Latest Order IDs
-      const orderIdsToFetch = new Set();
-      for (const sub of subs) {
-          const id = getLatestOrderIdFromSub(sub);
-          if (id) orderIdsToFetch.add(id);
-      }
-
-      // 3. Batch Fetch Orders
-      const orderMap = new Map();
-      if (orderIdsToFetch.size > 0) {
-          const idsArray = Array.from(orderIdsToFetch);
-          const idString = idsArray.join(",");
+      // 2. Fetch Latest Order for each Customer (Enrichment)
+      // We map each sub to a promise that fetches the latest order for its customer_id
+      const enrichedSubs = await Promise.all(subs.map(async (sub) => {
+          if (!sub.customer_id) return sub;
           
           try {
-              const orders = await wooGet(`/wp-json/wc/v3/orders?include=${idString}&per_page=100`);
-              if (Array.isArray(orders)) {
-                  for (const o of orders) {
-                      orderMap.set(o.id, o);
-                  }
+              const customerOrders = await wooGet(`/wp-json/wc/v3/orders?customer=${sub.customer_id}&per_page=1`);
+              if (Array.isArray(customerOrders) && customerOrders.length > 0) {
+                  sub._latest_order_fetched = customerOrders[0];
               }
           } catch (err) {
-              console.error("Failed to fetch related orders:", err.message);
+              console.error(`Failed to fetch latest order for customer ${sub.customer_id}:`, err.message);
           }
-      }
+          return sub;
+      }));
 
-      // 4. Map & Merge Data
+      // 3. Map & Merge Data
       const rows = [];
-      for (const sub of subs) {
-        const row = mapSubscriptionToRow(sub, orderMap);
+      for (const sub of enrichedSubs) {
+        const row = mapSubscriptionToRow(sub, sub._latest_order_fetched);
         if (!row.email || !row.email.includes("@")) continue;
         rows.push(row);
       }
 
-      // 5. Dedupe & Upsert
+      // 4. Dedupe & Upsert
       const deduped = dedupeRowsByEmailKeepHighestSubscriptionId(rows);
 
       if (deduped.length > 0) {
@@ -162,7 +121,7 @@ export default async function handler(req, res) {
         totalUpserted += deduped.length;
       }
 
-      // If user specified a specific start page, we stop after 1 batch to be safe against timeouts
+      // If user specified a specific start page, we stop after 1 batch
       if (url.searchParams.has("page")) {
           return json(res, 200, { ok: true, totalUpserted, pageProcessed: page, next: subs.length === perPage ? page + 1 : null });
       }

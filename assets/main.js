@@ -2,6 +2,28 @@
 const client = ZAFClient.init();
 client.invoke("resize", { width: "100%", height: "700px" });
 
+// ==========================================
+// TABS LOGIC
+// ==========================================
+function initTabs() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // 1. Toggle Button State
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      tab.classList.add('active');
+
+      // 2. Toggle Content State
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const targetId = `tab-${tab.dataset.tab}`;
+      document.getElementById(targetId).classList.add('active');
+    });
+  });
+}
+
+// ==========================================
+// WOO SYNC LOGIC
+// ==========================================
 function render(html) { document.getElementById("app").innerHTML = html; }
 
 function esc(s) {
@@ -17,8 +39,6 @@ function copyToClipboard(text) {
     client.invoke('notify', 'Failed to copy email', 'error');
   });
 }
-
-// Make it global so the inline onclick works
 window.copyToClipboard = copyToClipboard;
 
 function renderBox(title, bodyHtml) {
@@ -29,7 +49,7 @@ function renderBox(title, bodyHtml) {
 function renderError(title, detailsObj) {
   const details = detailsObj ? '<pre class="row muted">' + esc(JSON.stringify(detailsObj, null, 2)) + '</pre>' : '';
   renderBox("KR Zendesk Woo Sync", '<div class="row">Error: ' + esc(title) + '</div>' + details + '<div class="row"><button id="refreshBtn">Refresh</button></div>');
-  document.getElementById("refreshBtn").onclick = loadData;
+  document.getElementById("refreshBtn").onclick = loadWooData;
 }
 
 function renderNoData(email) {
@@ -38,7 +58,7 @@ function renderNoData(email) {
     '<div class="row">No Woo subscription data found.</div>' +
     '<div class="row"><button id="refreshBtn">Refresh</button></div>'
   );
-  document.getElementById("refreshBtn").onclick = loadData;
+  document.getElementById("refreshBtn").onclick = loadWooData;
 }
 
 function formatDate(isoStr) {
@@ -72,15 +92,17 @@ function renderRecord(record) {
   
   // Email Link
   let emailHtml = esc(record.email || "-");
-  if (record.subscription_admin_url && record.email) {
-    emailHtml = '<a href="' + esc(record.subscription_admin_url) + '" target="_blank" style="color: #1f73b7;">' + esc(record.email) + '</a>';
+  if (record.email) {
+    const emailUrl = "https://subscribers.katusaresearch.com/wp-admin/edit.php?s=" + encodeURIComponent(record.email) + "&post_status=all&post_type=shop_subscription&action=-1&m=0&_wcs_product&_payment_method&_customer_user&paged=1&action2=-1";
+    emailHtml = '<a href="' + esc(emailUrl) + '" target="_blank" style="color: #1f73b7;">' + esc(record.email) + '</a>';
   }
 
   // Order ID Link
   const orderId = (record.latest_order_id ?? "-").toString();
   let orderIdHtml = esc(orderId);
-  if (record.latest_order_admin_url && orderId !== "-") {
-    orderIdHtml = '<a href="' + esc(record.latest_order_admin_url) + '" target="_blank" style="color: #1f73b7;">' + esc(orderId) + '</a>';
+  if (orderId !== "-") {
+    const orderUrl = "https://subscribers.katusaresearch.com/wp-admin/edit.php?s=" + encodeURIComponent(orderId) + "&post_status=all&post_type=shop_order&action=-1&m=0&wpf_filter&_customer_user&shop_order_subtype&paged=1&action2=-1";
+    orderIdHtml = '<a href="' + esc(orderUrl) + '" target="_blank" style="color: #1f73b7;">' + esc(orderId) + '</a>';
   }
 
   renderBox("",
@@ -100,10 +122,10 @@ function renderRecord(record) {
     '<div class="row"><button id="refreshBtn">Refresh</button></div>'
   );
 
-  document.getElementById("refreshBtn").onclick = loadData;
+  document.getElementById("refreshBtn").onclick = loadWooData;
 }
 
-async function loadData() {
+async function loadWooData() {
   try {
     renderBox("KR Zendesk Woo Sync", '<div class="row muted">Loading Woo data…</div>');
 
@@ -141,4 +163,79 @@ async function loadData() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", loadData);
+
+// ==========================================
+// AI ASSISTANT LOGIC
+// ==========================================
+async function initAI() {
+  const btnRead = document.getElementById("btn-read-ticket");
+  const btnInsert = document.getElementById("btn-insert-reply");
+  const aiLoading = document.getElementById("ai-loading");
+  const aiResult = document.getElementById("ai-result-container");
+  const aiOutput = document.getElementById("ai-output");
+
+  btnRead.addEventListener("click", async () => {
+    // 1. Get Ticket Context
+    aiLoading.style.display = "block";
+    aiResult.style.display = "none";
+    btnRead.disabled = true;
+
+    try {
+      const data = await client.get('ticket.comments');
+      const comments = data['ticket.comments'];
+      
+      if (!comments || comments.length === 0) {
+        alert("No comments found in this ticket.");
+        aiLoading.style.display = "none";
+        btnRead.disabled = false;
+        return;
+      }
+
+      // Combine last 3 comments for context
+      const ticketContent = comments.slice(-3).map(c => 
+        `[${c.author.name}]: ${c.value.replace(/<[^>]*>?/gm, '')}` // Strip HTML
+      ).join("\n\n");
+
+      // 2. Call Backend API
+      const meta = await client.metadata();
+      const baseUrl = meta.settings.api_endpoint.replace(/\/+$/, "");
+      
+      const resp = await client.request({
+        url: `${baseUrl}/api/ai-reply`,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ ticketContent })
+      });
+
+      if (resp && resp.ok && resp.reply) {
+        aiOutput.value = resp.reply;
+        aiResult.style.display = "block";
+      } else {
+        alert("AI Failed to generate reply.");
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Error: " + err.message);
+    } finally {
+      aiLoading.style.display = "none";
+      btnRead.disabled = false;
+    }
+  });
+
+  btnInsert.addEventListener("click", () => {
+    const text = aiOutput.value;
+    if (text) {
+      client.invoke('ticket.editor.insert', text);
+    }
+  });
+}
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+  initTabs();
+  loadWooData();
+  initAI();
+});

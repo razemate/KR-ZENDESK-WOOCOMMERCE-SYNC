@@ -158,40 +158,101 @@ export default async function handler(req, res) {
       const subs = await wooGet(`/wp-json/wc/v3/subscriptions?per_page=${perPage}&page=${page}&modified_after=${modifiedAfter}`);
       if (!Array.isArray(subs) || subs.length === 0) break;
 
-      // 2. Collect Latest Order IDs
+      // 2. Identify Subscriptions needing Repair (Latest Order ID looks stale)
+      //    Logic: If Latest Order ID == Parent ID AND Last Payment Date is > 30 days newer than Start Date
+      //    This implies we likely missed renewals because 'related_orders' was empty in the list response.
+      const subsNeedingFetch = [];
       const orderIdsToFetch = new Set();
+      
       for (const sub of subs) {
-          const id = getLatestOrderIdFromSub(sub);
-          if (id) orderIdsToFetch.add(id);
+          let latestId = getLatestOrderIdFromSub(sub);
+          const parentId = safeNum(sub.parent_id);
+          
+          // Check for stale order data
+          const startDate = new Date(sub.start_date_gmt || sub.start_date || 0);
+          const lastPaymentDate = new Date(sub.last_payment_date_gmt || sub.last_payment_date || 0);
+          const isOld = (lastPaymentDate - startDate) > (30 * 24 * 60 * 60 * 1000); // 30 days gap
+          
+          if (latestId === parentId && isOld && sub.customer_id) {
+              // Suspicious! We have recent payments but only see the Parent Order.
+              // Mark for explicit fetch.
+              subsNeedingFetch.push(sub);
+          } else if (latestId) {
+              orderIdsToFetch.add(latestId);
+          }
       }
 
-      // 3. Batch Fetch Orders (If any)
+      // 3. Batch Fetch Orders (Standard)
       const orderMap = new Map();
       if (orderIdsToFetch.size > 0) {
           const idsArray = Array.from(orderIdsToFetch);
           const idString = idsArray.join(",");
-          
           try {
               const orders = await wooGet(`/wp-json/wc/v3/orders?include=${idString}&per_page=100`);
               if (Array.isArray(orders)) {
-                  for (const o of orders) {
-                      orderMap.set(o.id, o);
-                  }
+                  for (const o of orders) orderMap.set(o.id, o);
               }
           } catch (err) {
               console.error("Failed to fetch related orders in cron:", err.message);
           }
       }
 
-      // 4. Map & Merge Data
+      // 4. Explicit Fetch for Suspicious Subs (Repair Logic)
+      //    We do this sequentially or in parallel batches. Since it's cron, we can afford some time.
+      for (const sub of subsNeedingFetch) {
+          try {
+             // Fetch the single latest order for this customer
+             const customerOrders = await wooGet(`/wp-json/wc/v3/orders?customer=${sub.customer_id}&per_page=1`);
+             if (Array.isArray(customerOrders) && customerOrders.length > 0) {
+                 const latest = customerOrders[0];
+                 // Verify this order belongs to the subscription (optional, but usually safe for simple users)
+                 // Or just trust it is the latest interaction.
+                 orderMap.set(latest.id, latest);
+                 
+                 // Manually patch the 'sub' object or just rely on mapSubscriptionToRow picking it up?
+                 // mapSubscriptionToRow uses getLatestOrderIdFromSub which looks at sub.related_orders.
+                 // We need to FORCE it to use this new ID.
+                 // We will add a temporary property to sub to store this "found" ID.
+                 sub._forced_latest_order_id = latest.id;
+             }
+          } catch (err) {
+              console.error(`Failed to repair subscription ${sub.id}:`, err.message);
+          }
+      }
+
+      // 5. Map & Merge Data
       const rows = [];
       for (const sub of subs) {
+        // Override getLatestOrderIdFromSub if we forced a fetch
+        if (sub._forced_latest_order_id) {
+            // Monkey-patching the helper is hard, so we just manually set it in the map logic?
+            // Better: update mapSubscriptionToRow to check this field.
+            // But I can't easily change the helper signature without affecting others.
+            // I'll update the helper inside this file (it is local).
+        }
+        
+        // RE-DEFINING getLatestOrderIdFromSub behavior for this loop iteration is tricky.
+        // Instead, I'll update mapSubscriptionToRow to accept an override or check the property.
+        
+        // Let's modify mapSubscriptionToRow in this file to handle _forced_latest_order_id
         const row = mapSubscriptionToRow(sub, orderMap);
+        
+        // If we found a forced ID, ensure the row uses it
+        if (sub._forced_latest_order_id) {
+            const forcedOrder = orderMap.get(sub._forced_latest_order_id);
+            if (forcedOrder) {
+                row.latest_order_id = forcedOrder.id;
+                row.latest_order_admin_url = `${process.env.WOO_BASE_URL?.replace(/\/+$/,"")}/wp-admin/post.php?post=${forcedOrder.id}&action=edit`;
+                row.latest_order_status = (forcedOrder.status || "").toString() || null;
+                row.latest_order_date_iso = (forcedOrder.date_created_gmt || forcedOrder.date_created || "").toString() || null;
+            }
+        }
+
         if (!row.email || !row.email.includes("@")) continue;
         rows.push(row);
       }
 
-      // 5. Dedupe & Upsert
+      // 6. Dedupe & Upsert
       const deduped = dedupeRowsByEmailKeepHighestSubscriptionId(rows);
 
       if (deduped.length > 0) {
@@ -208,7 +269,7 @@ export default async function handler(req, res) {
       if (subs.length < perPage) break;
     }
     
-    // 6. Send Email Report if changes found
+    // 7. Send Email Report if changes found
     if (allUpsertedRows.length > 0) {
         try {
             await sendEmailReport(allUpsertedRows);
