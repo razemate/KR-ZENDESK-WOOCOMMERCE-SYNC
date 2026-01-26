@@ -49,7 +49,7 @@ function renderBox(title, bodyHtml) {
 function renderError(title, detailsObj) {
   const details = detailsObj ? '<pre class="row muted">' + esc(JSON.stringify(detailsObj, null, 2)) + '</pre>' : '';
   renderBox("KR Zendesk Woo Sync", '<div class="row">Error: ' + esc(title) + '</div>' + details + '<div class="row"><button id="refreshBtn">Refresh</button></div>');
-  document.getElementById("refreshBtn").onclick = loadWooData;
+  document.getElementById("refreshBtn").onclick = refreshWooData;
 }
 
 function renderNoData(email) {
@@ -58,7 +58,7 @@ function renderNoData(email) {
     '<div class="row">No Woo subscription data found.</div>' +
     '<div class="row"><button id="refreshBtn">Refresh</button></div>'
   );
-  document.getElementById("refreshBtn").onclick = loadWooData;
+  document.getElementById("refreshBtn").onclick = refreshWooData;
 }
 
 function formatDate(isoStr) {
@@ -122,7 +122,7 @@ function renderRecord(record) {
     '<div class="row"><button id="refreshBtn">Refresh</button></div>'
   );
 
-  document.getElementById("refreshBtn").onclick = loadWooData;
+  document.getElementById("refreshBtn").onclick = refreshWooData;
 }
 
 async function loadWooData() {
@@ -147,6 +147,40 @@ async function loadWooData() {
       resp = await client.request({ url, type: "GET", dataType: "json" });
     } catch (err) {
       renderError("Request failed", err);
+      return;
+    }
+
+    if (!resp || resp.ok !== true) {
+      renderError("Bad response from backend", resp);
+      return;
+    }
+
+    if (!resp.found) { renderNoData(email); return; }
+
+    renderRecord(resp.record || {});
+  } catch (e) {
+    renderError("Unexpected error", e);
+  }
+}
+
+async function refreshWooData() {
+  try {
+    renderBox("KR Zendesk Woo Sync", '<div class="row muted">Syncing with Woo…</div>');
+
+    const meta = await client.metadata();
+    const baseUrl = meta && meta.settings && meta.settings.api_endpoint ? String(meta.settings.api_endpoint).replace(/\/+$/, "") : "";
+    
+    const t = await client.get("ticket.requester.email");
+    const email = t["ticket.requester.email"];
+    if (!email) { renderNoData(""); return; }
+
+    const url = baseUrl + "/api/refresh-single?email=" + encodeURIComponent(email);
+
+    let resp;
+    try {
+      resp = await client.request({ url, type: "GET", dataType: "json" });
+    } catch (err) {
+      renderError("Refresh request failed", err);
       return;
     }
 
