@@ -1,0 +1,15 @@
+{
+  "name": "kr-zendesk-woo-sync-backend",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^17.2.3",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^7.0.12",
+    "openai": "^6.16.0"
+  }
+}
