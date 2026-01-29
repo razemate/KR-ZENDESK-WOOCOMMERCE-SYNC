@@ -1,7 +1,6 @@
 import { getSupabaseAdmin } from "../lib/supabase.js";
 import { wooGet } from "../lib/woo.js";
 import { json, pickSubscriptionEmail, pickSubscriptionName, safeNum } from "../lib/utils.js";
-import nodemailer from "nodemailer";
 
 // Extracts the latest order ID from the subscription object (related_orders)
 function getLatestOrderIdFromSub(sub) {
@@ -96,52 +95,6 @@ function dedupeRowsByEmailKeepHighestSubscriptionId(rows) {
   return Array.from(map.values());
 }
 
-async function sendEmailReport(updatedRows) {
-    if (!updatedRows || updatedRows.length === 0) return;
-    
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-    const reportTo = process.env.REPORT_EMAIL_TO; // Admin email
-
-    if (!smtpHost || !smtpUser || !smtpPass || !reportTo) {
-        console.warn("Skipping email report: Missing SMTP env vars (SMTP_HOST, SMTP_USER, SMTP_PASS, REPORT_EMAIL_TO)");
-        return;
-    }
-
-    // Generate CSV
-    const header = "Email,Name,Status,Subscription ID,Latest Order Status,Latest Order Date\n";
-    const body = updatedRows.map(r => 
-        `"${r.email}","${r.full_name||""}","${r.subscription_status||""}","${r.subscription_id||""}","${r.latest_order_status||""}","${r.latest_order_date_iso||""}"`
-    ).join("\n");
-    
-    const csvContent = header + body;
-
-    // Send Email
-    const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: 587, // Standard secure port
-        secure: false, // true for 465, false for other ports
-        auth: {
-            user: smtpUser,
-            pass: smtpPass,
-        },
-    });
-
-    await transporter.sendMail({
-        from: `"KR Sync Bot" <${smtpUser}>`,
-        to: reportTo,
-        subject: `[KR Sync] Daily Update Report - ${updatedRows.length} Changes`,
-        text: `The nightly sync job updated ${updatedRows.length} records. See attached CSV for details.`,
-        attachments: [
-            {
-                filename: `sync_report_${new Date().toISOString().split('T')[0]}.csv`,
-                content: csvContent
-            }
-        ]
-    });
-}
-
 export default async function handler(req, res) {
   try {
     // Look back 25 hours to cover the nightly gap + 1 hour buffer
@@ -151,7 +104,6 @@ export default async function handler(req, res) {
     const perPage = 50; 
     let page = 1;
     let totalUpserted = 0;
-    const allUpsertedRows = [];
     
     while (true) {
       // 1. Fetch Recently Modified Subscriptions
@@ -159,8 +111,6 @@ export default async function handler(req, res) {
       if (!Array.isArray(subs) || subs.length === 0) break;
 
       // 2. Fetch Latest Order for each Customer (Enrichment)
-      // We map each sub to a promise that fetches the latest order for its customer_id
-      // This replaces the old "heuristic" logic with explicit fetching to ensure accuracy.
       const enrichedSubs = await Promise.all(subs.map(async (sub) => {
           if (!sub.customer_id) return sub;
           
@@ -203,21 +153,10 @@ export default async function handler(req, res) {
 
         if (error) return json(res, 500, { ok: false, error: "Supabase upsert failed (cron)", details: error.message });
         totalUpserted += deduped.length;
-        allUpsertedRows.push(...deduped);
       }
 
       page += 1;
       if (subs.length < perPage) break;
-    }
-    
-    // 7. Send Email Report if changes found
-    if (allUpsertedRows.length > 0) {
-        try {
-            await sendEmailReport(allUpsertedRows);
-        } catch (emailErr) {
-            console.error("Failed to send email report:", emailErr);
-            // Don't fail the cron job just because email failed
-        }
     }
     
     return json(res, 200, { 
