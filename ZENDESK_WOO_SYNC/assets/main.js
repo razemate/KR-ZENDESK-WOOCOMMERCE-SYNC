@@ -3,25 +3,6 @@ const client = ZAFClient.init();
 client.invoke("resize", { width: "100%", height: "700px" });
 
 // ==========================================
-// TABS LOGIC
-// ==========================================
-function initTabs() {
-  const tabs = document.querySelectorAll('.tab-btn');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      // 1. Toggle Button State
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      tab.classList.add('active');
-
-      // 2. Toggle Content State
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      const targetId = `tab-${tab.dataset.tab}`;
-      document.getElementById(targetId).classList.add('active');
-    });
-  });
-}
-
-// ==========================================
 // WOO SYNC LOGIC
 // ==========================================
 function render(html) { document.getElementById("app").innerHTML = html; }
@@ -197,79 +178,9 @@ async function refreshWooData() {
   }
 }
 
-
-// ==========================================
-// AI ASSISTANT LOGIC
-// ==========================================
-async function initAI() {
-  const btnRead = document.getElementById("btn-read-ticket");
-  const btnInsert = document.getElementById("btn-insert-reply");
-  const aiLoading = document.getElementById("ai-loading");
-  const aiResult = document.getElementById("ai-result-container");
-  const aiOutput = document.getElementById("ai-output");
-
-  btnRead.addEventListener("click", async () => {
-    // 1. Get Ticket Context
-    aiLoading.style.display = "block";
-    aiResult.style.display = "none";
-    btnRead.disabled = true;
-
-    try {
-      const data = await client.get('ticket.comments');
-      const comments = data['ticket.comments'];
-      
-      if (!comments || comments.length === 0) {
-        alert("No comments found in this ticket.");
-        aiLoading.style.display = "none";
-        btnRead.disabled = false;
-        return;
-      }
-
-      // Combine last 3 comments for context
-      const ticketContent = comments.slice(-3).map(c => 
-        `[${c.author.name}]: ${c.value.replace(/<[^>]*>?/gm, '')}` // Strip HTML
-      ).join("\n\n");
-
-      // 2. Call Backend API
-      const meta = await client.metadata();
-      const baseUrl = meta.settings.api_endpoint.replace(/\/+$/, "");
-      
-      const resp = await client.request({
-        url: `${baseUrl}/api/ai-reply`,
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ ticketContent })
-      });
-
-      if (resp && resp.ok && resp.reply) {
-        aiOutput.value = resp.reply;
-        aiResult.style.display = "block";
-      } else {
-        alert("AI Failed to generate reply.");
-      }
-
-    } catch (err) {
-      console.error(err);
-      alert("Error: " + err.message);
-    } finally {
-      aiLoading.style.display = "none";
-      btnRead.disabled = false;
-    }
-  });
-
-  btnInsert.addEventListener("click", () => {
-    const text = aiOutput.value;
-    if (text) {
-      client.invoke('ticket.editor.insert', text);
-    }
-  });
-}
-
 // ==========================================
 // INITIALIZATION
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
-  initTabs();
   loadWooData();
-  initAI();
 });

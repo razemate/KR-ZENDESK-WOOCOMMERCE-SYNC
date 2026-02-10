@@ -1,4 +1,4 @@
-﻿import { getSupabaseAdmin } from "../lib/supabase.js";
+import { getSupabaseAdmin } from "../lib/supabase.js";
 import { json, getEmailFromReq } from "../lib/utils.js";
 
 export default async function handler(req, res) {
@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
-      .from("woo_subscription_snapshot")
+      .from("customer_unified_view")
       .select("*")
       .eq("email", email)
       .maybeSingle();

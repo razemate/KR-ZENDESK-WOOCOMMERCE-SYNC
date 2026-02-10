@@ -107,7 +107,7 @@ export default async function handler(req, res) {
     
     // 5. Upsert to Supabase
     const { error } = await supabase
-      .from("woo_subscription_snapshot")
+      .from("customer_unified_view")
       .upsert(row, { onConflict: "email" });
 
     if (error) return json(res, 500, { ok: false, error: "Supabase upsert failed", details: error.message });

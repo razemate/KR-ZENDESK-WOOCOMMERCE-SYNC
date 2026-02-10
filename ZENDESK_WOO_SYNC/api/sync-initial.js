@@ -114,7 +114,7 @@ export default async function handler(req, res) {
 
       if (deduped.length > 0) {
         const { error } = await supabase
-          .from("woo_subscription_snapshot")
+          .from("customer_unified_view")
           .upsert(deduped, { onConflict: "email" });
 
         if (error) return json(res, 500, { ok: false, error: "Supabase upsert failed", details: error.message });
