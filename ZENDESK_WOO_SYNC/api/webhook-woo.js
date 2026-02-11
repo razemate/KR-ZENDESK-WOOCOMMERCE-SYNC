@@ -82,7 +82,7 @@ export default async function handler(req, res) {
 
         // Fetch existing row to avoid overwriting a NEWER order with an OLDER one
         const { data: existing } = await supabase
-            .from("customer_unified_view")
+            .from("woo_subscription_snapshot")
             .select("latest_order_id, latest_order_date_iso")
             .eq("email", email)
             .maybeSingle();
@@ -114,7 +114,7 @@ export default async function handler(req, res) {
     }
 
     const { error } = await supabase
-      .from("customer_unified_view")
+      .from("woo_subscription_snapshot")
       .upsert(upsertRow, { onConflict: "email" });
 
     if (error) return json(res, 500, { ok: false, error: "Supabase upsert failed", details: error.message });

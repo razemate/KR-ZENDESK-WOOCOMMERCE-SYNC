@@ -117,7 +117,7 @@ async function run() {
 
       if (deduped.length > 0) {
         const { error } = await supabase
-          .from("customer_unified_view")
+          .from("woo_subscription_snapshot")
           .upsert(deduped, { onConflict: "email" });
 
         if (error) {

@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
-      .from("customer_unified_view")
+      .from("woo_subscription_snapshot")
       .select("email, full_name, subscription_status, subscription_id, latest_order_status, latest_order_date_iso, last_synced_at")
       .gt("last_synced_at", since)
       .order("last_synced_at", { ascending: false });
