@@ -58,14 +58,9 @@ export default async function handler(req, res) {
     const email = getEmailFromReq(req);
     if (!email || !email.includes("@")) return json(res, 400, { ok: false, error: "Missing or invalid email" });
 
-    const supabase = getSupabaseAdmin();
-
     // 1. Fetch Customer ID from WooCommerce by Email
     const customers = await wooGet(`/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}`);
     if (!Array.isArray(customers) || customers.length === 0) {
-        // No customer found in Woo
-        // We should clear the record in Supabase or mark as not found? 
-        // For now, let's just return not found.
         return json(res, 200, { ok: true, found: false, email });
     }
     
@@ -99,18 +94,11 @@ export default async function handler(req, res) {
     }
 
     // 4. Construct Row
-    // If no subscription, we might still want to show latest order?
-    // The current UI assumes subscription data drives the view.
-    // If we have an order but no subscription, we can construct a partial row.
-    
     const row = mapSubscriptionToRow(subscription || { email, id: null }, latestOrder);
     
-    // 5. Upsert to Supabase
-    const { error } = await supabase
-      .from("woo_subscription_snapshot")
-      .upsert(row, { onConflict: "email" });
-
-    if (error) return json(res, 500, { ok: false, error: "Supabase upsert failed", details: error.message });
+    // 5. SKIP Upsert to Supabase (Read-Only Mode)
+    // We do NOT update the DB because the table 'woo_subscriptions' is managed by an external process.
+    // We just return the fresh data to the UI.
 
     return json(res, 200, { ok: true, found: true, email, record: row });
 

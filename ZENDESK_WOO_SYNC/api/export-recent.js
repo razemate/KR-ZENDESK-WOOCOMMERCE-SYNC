@@ -15,19 +15,22 @@ export default async function handler(req, res) {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const supabase = getSupabaseAdmin();
+    // Query 'woo_subscriptions' table
     const { data, error } = await supabase
-      .from("woo_subscription_snapshot")
-      .select("email, full_name, subscription_status, subscription_id, latest_order_status, latest_order_date_iso, last_synced_at")
-      .gt("last_synced_at", since)
-      .order("last_synced_at", { ascending: false });
+      .from("woo_subscriptions")
+      .select("email, first_name, last_name, status, id, updated_at")
+      .gt("updated_at", since)
+      .order("updated_at", { ascending: false });
 
     if (error) throw error;
 
     // Convert to CSV
-    const header = "Email,Name,Status,Subscription ID,Latest Order Status,Latest Order Date,Synced At\n";
-    const body = (data || []).map(r => 
-        `"${r.email}","${r.full_name||""}","${r.subscription_status||""}","${r.subscription_id||""}","${r.latest_order_status||""}","${r.latest_order_date_iso||""}","${r.last_synced_at}"`
-    ).join("\n");
+    // Note: 'latest_order' fields are not available in this table.
+    const header = "Email,Name,Status,Subscription ID,Updated At\n";
+    const body = (data || []).map(r => {
+        const fullName = [r.first_name, r.last_name].filter(Boolean).join(" ");
+        return `"${r.email}","${fullName}","${r.status||""}","${r.id||""}","${r.updated_at}"`;
+    }).join("\n");
 
     const csv = header + body;
 
